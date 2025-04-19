@@ -1,7 +1,7 @@
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-const App = () => <div>Hello, React! <span>2</span></div>;
+import { App } from "./App";
 
 const container = document.getElementById("root");
 if (container === null)
