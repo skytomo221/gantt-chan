@@ -1,6 +1,6 @@
 import React, { FC, useEffect, useRef } from 'react'
 import * as d3 from 'd3'
-import { Schedule, Task } from "./types";
+import { Milestone, Schedule, Task, TaskStatus } from "./types";
 
 interface GanttChartProps {
   schedule: Schedule;
@@ -66,10 +66,88 @@ function drawChart(
     .append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`)
 
+  // ── 横軸のみズーム設定 ──
+  const zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
+    .scaleExtent([0.5, 3])
+    .translateExtent([[0, 0], [width, 0]])
+    .extent([[0, 0], [width, 0]])
+    .on("zoom", (event) => {
+      // event.transform から再スケールした xScale を取得
+      const newX = event.transform.rescaleX(xScale)
+      // 月・日ヘッダーを再描画
+      drawMonths(newX)
+      drawDays(newX)
+      // タスクバー位置も更新
+      g.selectAll<SVGRectElement, Exclude<Task, Milestone>>(".task-bar")
+        .attr("x", d => newX(d.scheduledStartDate))
+        .attr("width", d => newX(d.scheduledEndDate) - newX(d.scheduledStartDate))
+      // 進捗線も更新
+      updateProgressLine(newX)
+    })
+
+  svg.call(zoomBehavior)
+    .on("dblclick.zoom", null)  // ダブルクリックズームを無効化（任意）
+
   const xScale = d3
     .scaleTime()
     .domain([minDate, maxDate])
     .range([0, width])
+
+  // ── 再描画用ヘルパー ──
+  // 月ヘッダーと日ヘッダーをそれぞれ再描画する関数を用意
+  const monthData = d3.timeMonths(d3.timeMonth.floor(minDate), d3.timeMonth.offset(maxDate, 1))
+  const dayData = d3.timeDays(d3.timeDay.floor(minDate), d3.timeDay.offset(maxDate, 1))
+  function drawMonths(scale: d3.ScaleTime<number, number>) {
+    const sel = g.selectAll<SVGRectElement, Date>(".month-rect").data(monthData)
+    sel.exit().remove()
+    const enter = sel.enter().append("rect").attr("class", "month-rect")
+    enter.merge(sel)
+      .attr("x", d => scale(d))
+      .attr("y", -margin.top)
+      .attr("width", d => scale(d3.timeMonth.offset(d, 1)) - scale(d))
+      .attr("height", 20)
+      .attr("fill", "#bbb")
+    const txt = g.selectAll<SVGTextElement, Date>(".month-text").data(monthData)
+    txt.exit().remove()
+    const txtEnter = txt.enter().append("text").attr("class", "month-text")
+    txtEnter.merge(txt)
+      .attr("x", d => scale(d) + 5)
+      .attr("y", -margin.top + 15)
+      .text(d3.timeFormat("%Y年%-m月"))
+      .attr("font-size", "12px")
+  }
+  function drawDays(scale: d3.ScaleTime<number, number>) {
+    const sel = g.selectAll<SVGRectElement, Date>(".day-rect").data(dayData)
+    sel.exit().remove()
+    const enter = sel.enter().append("rect").attr("class", "day-rect")
+    enter.merge(sel)
+      .attr("x", d => scale(d))
+      .attr("y", -margin.top + 20)
+      .attr("width", d => scale(d3.timeDay.offset(d, 1)) - scale(d))
+      .attr("height", 20)
+      .attr("fill", "#ddd")
+    const txt = g.selectAll<SVGTextElement, Date>(".day-text").data(dayData)
+    txt.exit().remove()
+    const txtEnter = txt.enter().append("text").attr("class", "day-text")
+    txtEnter.merge(txt)
+      .attr("x", d => scale(d) + 2)
+      .attr("y", -margin.top + 35)
+      .text(d3.timeFormat("%-d"))
+      .attr("font-size", "10px")
+    const line = g.selectAll<SVGLineElement, Date>(".grid-line").data(dayData)
+    line.exit().remove()
+    const lineEnter = line.enter().append("line").attr("class", "grid-line")
+    lineEnter.merge(line)
+      .attr("x1", d => scale(d))
+      .attr("y1", 0)
+      .attr("x2", d => scale(d))
+      .attr("y2", tasks.length * rowHeight)
+      .attr("stroke", "#aaa")
+      .attr("stroke-width", 0.5)
+  }
+  // 初回描画
+  drawMonths(xScale)
+  drawDays(xScale)
 
   // ツールチップ
   d3.selectAll('.tooltip').remove()
@@ -83,52 +161,34 @@ function drawChart(
     .style('padding', '5px')
     .style('opacity', 0)
 
-  // ── 月ヘッダー ──
-  const months = d3.timeMonths(d3.timeMonth.floor(minDate), d3.timeMonth.offset(maxDate, 1))
-  months.forEach(m => {
-    const x = xScale(m)
-    const xNext = xScale(d3.timeMonth.offset(m, 1))
-    g.append("rect")
-      .attr("x", x)
-      .attr("y", -margin.top)
-      .attr("width", xNext - x)
-      .attr("height", 20)
-      .attr("fill", "#bbb")
+  // パン用の変数
+  let currentTranslateX = 0
 
-    g.append("text")
-      .attr("x", x + 5)
-      .attr("y", -margin.top + 15)
-      .text(d3.timeFormat("%Y年%-m月")(m))
-      .attr("fill", "#000")
-      .attr("font-size", "12px")
-  })
-
-  // ── 日ヘッダー＋グリッド線 ──
-  const days = d3.timeDays(d3.timeDay.floor(minDate), d3.timeDay.offset(maxDate, 1))
-  days.forEach(d => {
-    const x = xScale(d)
-    g.append("rect")
-      .attr("x", x)
-      .attr("y", -margin.top + 20)
-      .attr("width", cellWidth)
-      .attr("height", 20)
-      .attr("fill", "#ddd")
-
-    g.append("text")
-      .attr("x", x + 2)
-      .attr("y", -margin.top + 35)
-      .text(d3.timeFormat("%-d")(d))
-      .attr("font-size", "10px")
-
-    // 補助線
-    g.append("line")
-      .attr("x1", x)
-      .attr("y1", 0)
-      .attr("x2", x)
-      .attr("y2", tasks.length * rowHeight)
-      .attr("stroke", "#aaa")
-      .attr("stroke-width", 0.5)
-  })
+  // 背景キャプチャ用の透明な矩形（先頭に挿入）
+  g.insert("rect", ":first-child")
+    .attr("class", "pan-rect")
+    .attr("x", 0)
+    .attr("y", -margin.top)
+    .attr("width", width)
+    .attr("height", svgHeight)
+    .style("fill", "transparent")
+    .style("cursor", "grab")
+    .call(d3.drag<SVGRectElement, unknown>()
+      .on("start", () => {
+        g.style("cursor", "grabbing")
+      })
+      .on("drag", (event) => {
+        currentTranslateX += event.dx
+        // translate を更新
+        g.attr(
+          "transform",
+          `translate(${margin.left + currentTranslateX},${margin.top})`
+        )
+      })
+      .on("end", () => {
+        g.style("cursor", "grab")
+      })
+    )
 
   // タスクバー＋進捗バー＋イベント
   tasks
@@ -150,12 +210,14 @@ function drawChart(
 
       // メインバー
       const bar = gTask.append('rect')
+        .datum(task)
         .attr('x', x0)
         .attr('y', 5)
         .attr('width', w0)
         .attr('height', rowHeight - 10)
         .attr('fill', 'steelblue')
         .style('cursor', editable ? 'pointer' : 'default')
+        .attr('class', 'task-bar')
 
       // ツールチップ
       bar.on('mouseover', (event) => {
@@ -197,7 +259,7 @@ function drawChart(
                 const x1 = xScale(newStart)
                 const w1 = xScale(task.scheduledEndDate) - x1
                 bar.attr('x', x1).attr('width', w1)
-                updateProgressLine()
+                updateProgressLine(xScale)
               }
             })
           )
@@ -216,35 +278,35 @@ function drawChart(
               const dayCount = Math.max(1, Math.round(dx / cellWidth))
               task.scheduledEndDate = new Date(task.scheduledStartDate.getTime() + dayCount * dayMs)
               bar.attr('width', cellWidth * dayCount)
-              updateProgressLine()
+              updateProgressLine(xScale)
             })
           )
       }
     })
 
   // ── 進捗ライン（イナズマ線） ──
-  function updateProgressLine() {
+  function updateProgressLine(scale: d3.ScaleTime<number, number>) {
     g.selectAll("polyline").remove()
     const pts = tasks.map((t, i) => {
-      let progX: number;
+      let progX: number
       switch (t.status) {
         case "new":
           progX = t.scheduledStartDate <= new Date()
-            ? xScale(t.scheduledStartDate)
-            : xScale(new Date())
-          break;
+            ? scale(t.scheduledStartDate)
+            : scale(new Date())
+          break
         case "active":
-          progX = xScale(t.actualStartDate)
-          break;
+          progX = scale(t.actualStartDate)
+          break
         case "milestone":
           progX = t.scheduledDate <= new Date()
-            ? xScale(t.scheduledDate)
-            : xScale(new Date())
-          break;
+            ? scale(t.scheduledDate)
+            : scale(new Date())
+          break
         case "done":
         default:
-          progX = xScale(new Date())
-          break;
+          progX = scale(new Date())
+          break
       }
       const progY = i * rowHeight + rowHeight / 2
       return [progX, progY] as [number, number]
@@ -257,5 +319,5 @@ function drawChart(
   }
 
   // 初期表示時に一度呼ぶ
-  updateProgressLine()
+  updateProgressLine(xScale)
 }
