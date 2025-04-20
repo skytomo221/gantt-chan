@@ -16,17 +16,18 @@ export const App = () => {
       {
         sectionId: "a",
         taskName: "タスク1",
+        status: "active",
         scheduledStartDate: new Date("2025-01-01"),
         scheduledEndDate: new Date("2025-01-31"),
         personDays: 31,
         actualStartDate: new Date("2025-01-02"),
-        actualEndDate: new Date("2025-01-30"),
         assignee: "山田太郎",
         progress: 50,
       },
       {
         sectionId: "b",
         taskName: "タスク2",
+        status: "done",
         scheduledStartDate: new Date("2025-02-01"),
         scheduledEndDate: new Date("2025-02-28"),
         personDays: 28,
@@ -38,11 +39,10 @@ export const App = () => {
       {
         sectionId: "c",
         taskName: "タスク3",
+        status: "new",
         scheduledStartDate: new Date("2025-03-01"),
         scheduledEndDate: new Date("2025-03-31"),
         personDays: 31,
-        actualStartDate: undefined,
-        actualEndDate: undefined,
         assignee: "鈴木一郎",
         progress: 0,
       },
@@ -128,7 +128,7 @@ export const App = () => {
               sections: [...prevSchedule.sections, newSection],
             }));
           }
-        }>
+          }>
           セクションを追加する
         </button>
         <table>
@@ -167,6 +167,7 @@ export const App = () => {
                   {
                     schedule.tasks
                       .filter(task => task.sectionId === section.sectionId)
+                      .filter(task => task.status !== "milestone")
                       .map(task => task.personDays)
                       .reduce((acc, curr) => acc + curr, 0)
                   }
@@ -176,6 +177,7 @@ export const App = () => {
                     (() => {
                       const progressData = schedule.tasks
                         .filter(task => task.sectionId === section.sectionId)
+                        .filter(task => task.status !== "milestone")
                         .map(task => ({ totalPersonDays: task.personDays, completedPersonDays: task.personDays * task.progress / 100 }))
                         .reduce((acc, curr) => ({
                           totalPersonDays: acc.totalPersonDays + curr.totalPersonDays,
@@ -198,12 +200,11 @@ export const App = () => {
           onClick={() => {
             const newTask: Task = {
               sectionId: schedule.sections[0].sectionId,
-              taskName: "",
+              taskName: "新しいタスク",
+              status: "new",
               scheduledStartDate: new Date(),
               scheduledEndDate: new Date(),
               personDays: 0,
-              actualStartDate: undefined,
-              actualEndDate: undefined,
               assignee: "",
               progress: 0,
             };
@@ -220,6 +221,7 @@ export const App = () => {
           <tr>
             <th>セクション</th>
             <th>タスク</th>
+            <th>ステータス</th>
             <th>予定開始日</th>
             <th>予定終了日</th>
             <th>人日</th>
@@ -259,62 +261,215 @@ export const App = () => {
               <td>
                 {
                   isEditable
-                    ? <input type="date" value={task.scheduledStartDate.toISOString().split("T")[0]}
+                    ? <select value={task.status}
                       onChange={
-                        (e) => updateTask(index, { ...task, scheduledStartDate: new Date(e.target.value) })
-                      } />
-                    : task.scheduledStartDate.toLocaleDateString()
+                        (e) => {
+                          switch (e.target.value) {
+                            case "new":
+                              {
+                                switch (task.status) {
+                                  case "active":
+                                  case "done":
+                                    updateTask(index, { ...task, status: "new", progress: 0 });
+                                    break;
+                                  case "milestone":
+                                    updateTask(index, {
+                                      ...task,
+                                      status: "new",
+                                      progress: 0,
+                                      scheduledStartDate: task.scheduledDate,
+                                      scheduledEndDate: task.scheduledDate,
+                                      personDays: 1
+                                    });
+                                  default:
+                                    break;
+                                }
+                              }
+                              break;
+                            case "active":
+                              switch (task.status) {
+                                case "new":
+                                case "done":
+                                  updateTask(index, { ...task, status: "active", actualStartDate: task.scheduledStartDate });
+                                  break;
+                                case "milestone":
+                                  updateTask(index, {
+                                    ...task,
+                                    status: "active",
+                                    progress: 0,
+                                    scheduledStartDate: task.scheduledDate,
+                                    scheduledEndDate: task.scheduledDate,
+                                    personDays: 1,
+                                    actualStartDate: task.actualDate ?? task.scheduledDate,
+                                  });
+                                  break;
+                                default:
+                                  break;
+                              }
+                              break;
+                            case "done":
+                              switch (task.status) {
+                                case "new":
+                                  updateTask(index, {
+                                    ...task,
+                                    status: "done",
+                                    actualStartDate: task.scheduledStartDate,
+                                    actualEndDate: task.scheduledEndDate,
+                                    progress: 100
+                                  });
+                                  break;
+                                case "active":
+                                  updateTask(index, {
+                                    ...task,
+                                    status: "done",
+                                    actualEndDate: task.scheduledEndDate,
+                                    progress: 100
+                                  });
+                                  break;
+                                case "milestone":
+                                  updateTask(index, {
+                                    ...task,
+                                    status: "done",
+                                    progress: 100,
+                                    scheduledStartDate: task.scheduledDate,
+                                    scheduledEndDate: task.scheduledDate,
+                                    personDays: 1,
+                                    actualStartDate: task.actualDate ?? task.scheduledDate,
+                                    actualEndDate: task.actualDate ?? task.scheduledDate,
+                                  });
+                                  break;
+                                default:
+                                  break;
+                              }
+                              break;
+                            case "milestone":
+                              if (task.status !== "milestone") {
+                                updateTask(index, {
+                                  ...task,
+                                  status: "milestone",
+                                  scheduledDate: task.scheduledStartDate,
+                                  actualDate: task.status === "done" ? task.actualEndDate : undefined,
+                                });
+                              }
+                              break;
+                            default:
+                              break;
+                          }
+                        }
+                      }>
+                      <option value="new">新規</option>
+                      <option value="active">進行中</option>
+                      <option value="done">完了</option>
+                      <option value="milestone">マイルストーン</option>
+                    </select>
+                    : (() => {
+                      switch (task.status) {
+                        case "new":
+                          return "新規";
+                        case "active":
+                          return "進行中";
+                        case "done":
+                          return "完了";
+                        case "milestone":
+                          return "マイルストーン";
+                      }
+                    })()
                 }
               </td>
+              {
+                task.status === "milestone"
+                  ? <td colSpan={2}>
+                    {
+                      isEditable
+                        ? <input type="date" value={task.scheduledDate.toISOString().split("T")[0]}
+                          onChange={
+                            (e) => updateTask(index, { ...task, scheduledDate: new Date(e.target.value) })
+                          } />
+                        : task.scheduledDate.toLocaleDateString()
+                    }
+                  </td>
+                  : <>
+                    <td>
+                      {
+                        isEditable
+                          ? <input type="date" value={task.scheduledStartDate.toISOString().split("T")[0]}
+                            onChange={
+                              (e) => updateTask(index, { ...task, scheduledStartDate: new Date(e.target.value) })
+                            } />
+                          : task.scheduledStartDate.toLocaleDateString()
+                      }
+                    </td>
+                    <td>
+                      {
+                        isEditable
+                          ? <input type="date" value={task.scheduledEndDate.toISOString().split("T")[0]}
+                            onChange={
+                              (e) => updateTask(index, {
+                                ...task,
+                                scheduledEndDate: new Date(e.target.value),
+                                personDays: Math.ceil((new Date(e.target.value).getTime() - task.scheduledStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+                              })
+                            } />
+                          : task.scheduledEndDate.toLocaleDateString()
+                      }
+                    </td>
+                  </>
+              }
               <td>
                 {
-                  isEditable
-                    ? <input type="date" value={task.scheduledEndDate.toISOString().split("T")[0]}
-                      onChange={
-                        (e) => updateTask(index, {
-                          ...task,
-                          scheduledEndDate: new Date(e.target.value),
-                          personDays: Math.ceil((new Date(e.target.value).getTime() - task.scheduledStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-                        })
-                      } />
-                    : task.scheduledEndDate.toLocaleDateString()
+                  task.status === "milestone"
+                    ? "N/A"
+                    : isEditable
+                      ? <input type="number" value={task.personDays}
+                        onChange={
+                          (e) => updateTask(index, {
+                            ...task,
+                            scheduledEndDate: new Date(task.scheduledStartDate.getTime() + Number(e.target.value) * 24 * 60 * 60 * 1000 - 1),
+                            personDays: Number(e.target.value)
+                          })
+                        } />
+                      : task.personDays
                 }
               </td>
-              <td>
-                {
-                  isEditable
-                    ?
-                    <input type="number" value={task.personDays}
-                      onChange={
-                        (e) => updateTask(index, {
-                          ...task,
-                          scheduledEndDate: new Date(task.scheduledStartDate.getTime() + Number(e.target.value) * 24 * 60 * 60 * 1000 - 1),
-                          personDays: Number(e.target.value)
-                        })
-                      } />
-                    : task.personDays
-                }
-              </td>
-              <td>
-                {
-                  isEditable
-                    ? <input type="date" value={task.actualStartDate?.toISOString().split("T")[0]}
-                      onChange={
-                        (e) => updateTask(index, { ...task, actualStartDate: new Date(e.target.value) })
-                      } />
-                    : task.actualStartDate?.toLocaleDateString()
-                }
-              </td>
-              <td>
-                {
-                  isEditable
-                    ? <input type="date" value={task.actualEndDate?.toISOString().split("T")[0]}
-                      onChange={
-                        (e) => updateTask(index, { ...task, actualEndDate: new Date(e.target.value) })
-                      } />
-                    : task.actualEndDate?.toLocaleDateString()
-                }
-              </td>
+              {
+                task.status === "milestone"
+                  ? <td colSpan={2}>
+                    {
+                      isEditable
+                        ? <input type="date" value={task.actualDate?.toISOString().split("T")[0]}
+                          onChange={
+                            (e) => updateTask(index, { ...task, actualDate: new Date(e.target.value) })
+                          } />
+                        : task.actualDate?.toLocaleDateString()
+                    }
+                  </td>
+                  : <>
+                    <td>
+                      {
+                        task.status === "new"
+                          ? "N/A"
+                          : isEditable
+                            ? <input type="date" value={task.actualStartDate?.toISOString().split("T")[0]}
+                              onChange={
+                                (e) => updateTask(index, { ...task, actualStartDate: new Date(e.target.value) })
+                              } />
+                            : task.actualStartDate?.toLocaleDateString()
+                      }
+                    </td>
+                    <td>
+                      {
+                        task.status === "new" || task.status === "active"
+                          ? "N/A"
+                          : isEditable
+                            ? <input type="date" value={task.actualEndDate?.toISOString().split("T")[0]}
+                              onChange={
+                                (e) => updateTask(index, { ...task, actualEndDate: new Date(e.target.value) })
+                              } />
+                            : task.actualEndDate?.toLocaleDateString()
+                      }
+                    </td>
+                  </>
+              }
               <td>
                 {
                   isEditable
@@ -327,12 +482,7 @@ export const App = () => {
               </td>
               <td>
                 {
-                  isEditable
-                    ? <input type="number" value={task.progress}
-                      onChange={
-                        (e) => updateTask(index, { ...task, progress: Number(e.target.value) })
-                      } />
-                    : `${task.progress}%`
+                  task.status === "milestone" ? "N/A" : `${task.progress}%`
                 }
               </td>
               <td>
