@@ -1,27 +1,7 @@
 import { useState } from "react";
 
-export type Section = {
-  sectionId: string;
-  sectionName: string;
-}
-
-export type Task = {
-  sectionId: string;
-  taskName: string;
-  scheduledStartDate: Date;
-  scheduledEndDate: Date;
-  personDays: number;
-  actualStartDate?: Date;
-  actualEndDate?: Date;
-  assignee: string;
-  progress: number;
-}
-
-export type Schedule = {
-  version: "1.0";
-  sections: Section[];
-  tasks: Task[];
-};
+import { GanttChart } from "./GanttChart";
+import { Schedule, Section, Task } from "./types";
 
 export const App = () => {
   const [isEditable, setIsEditable] = useState(false);
@@ -399,6 +379,7 @@ export const App = () => {
           ))}
         </tbody>
       </table>
+      <GanttChart schedule={schedule} />
       <footer>skytomo © 2025</footer>
     </>
   );
