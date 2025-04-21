@@ -1,14 +1,11 @@
 import React, { FC, useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import { Milestone, Schedule, Task, TaskStatus } from "./types";
+import { useGlobalStateStore } from './contexts/globalStateContext';
 
-interface GanttChartProps {
-  schedule: Schedule;
-  editable?: boolean;
-}
-
-export const GanttChart: FC<GanttChartProps> = ({ schedule, editable = true }) => {
+export const GanttChart: FC = () => {
   const svgRef = useRef<SVGSVGElement>(null)
+  const { schedule, editable } = useGlobalStateStore();
 
   useEffect(() => {
     drawChart(svgRef, schedule, editable)

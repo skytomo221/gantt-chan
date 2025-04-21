@@ -7,6 +7,7 @@ export type TaskStatus = "new" | "active" | "done" | "milestone";
 
 export type Task = {
   sectionId: string;
+  taskId: string;
   taskName: string;
   status: TaskStatus;
   assignee: string;
