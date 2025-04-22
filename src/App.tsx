@@ -8,8 +8,8 @@ export const App = () => {
   return (
     <GlobalStateProvider>
       <header><h1>ガントちゃん</h1></header>
-      <Schedule />
       <GanttChart />
+      <Schedule />
       <footer>skytomo © 2025</footer>
     </GlobalStateProvider>
   );
