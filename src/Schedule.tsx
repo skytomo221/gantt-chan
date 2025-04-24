@@ -67,6 +67,56 @@ export const Schedule = () => {
     });
   }
 
+  const addHoliday = (holiday: Date) => {
+    dispatch({
+      type: "ADD_HOLIDAY",
+      payload: holiday,
+    });
+  }
+
+  const removeHoliday = (holiday: Date) => {
+    dispatch({
+      type: "REMOVE_HOLIDAY",
+      payload: holiday,
+    });
+  }
+
+  const setSkipWeekends = (skip: boolean) => {
+    dispatch({
+      type: "SET_SKIP_WEEKENDS",
+      payload: skip,
+    });
+  }
+
+  const calculateEndDate = (startDate: Date, personDays: number) => {
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() - 1);
+    while (personDays > 0) {
+      endDate.setDate(endDate.getDate() + 1);
+      if (schedule.holidays.some(holiday => holiday.getTime() === endDate.getTime())) {
+        continue;
+      }
+      if (schedule.skipWeekends && (endDate.getDay() === 0 || endDate.getDay() === 6)) {
+        continue;
+      }
+      personDays--;
+    }
+    return endDate;
+  }
+
+  const calculatePersonDays = (startDate: Date, endDate: Date) => {
+    let personDays = 0;
+    const currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      if (!schedule.holidays.some(holiday => holiday.getTime() === currentDate.getTime()) &&
+        !(schedule.skipWeekends && (currentDate.getDay() === 0 || currentDate.getDay() === 6))) {
+        personDays++;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return personDays;
+  }
+
   return (
     <>
       <div>
@@ -84,6 +134,7 @@ export const Schedule = () => {
                   const raw = JSON.parse(text);
                   const parsedSchedule: ScheduleType = {
                     ...raw,
+                    holidays: raw.holidays.map((holiday: any) => new Date(holiday)),
                     tasks: raw.tasks.map((task: any) => ({
                       ...task,
                       scheduledStartDate: new Date(task.scheduledStartDate),
@@ -124,6 +175,47 @@ export const Schedule = () => {
       </div>
       <p>バージョン: {schedule.version}</p>
       <p>タスク数: {schedule.tasks.length}</p>
+      <h3>休日一覧</h3>
+      <div>
+        <p>土日を除外する: <input type="checkbox" checked={schedule.skipWeekends} onChange={(e) => setSkipWeekends(e.target.checked)} /></p>
+        <button
+          onClick={() => {
+            const newHoliday = new Date();
+            newHoliday.setDate(newHoliday.getDate() + 1);
+            addHoliday(newHoliday);
+          }}>
+          休日を追加する
+        </button>
+        <table>
+          <thead>
+            <tr>
+              <th>休日</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {schedule.holidays.map((holiday, index) => (
+              <tr key={index}>
+                <td>
+                  {
+                    editable
+                      ? <input type="date" value={holiday.toISOString().split("T")[0]}
+                        onChange={
+                          (e) => {
+                            const updatedHoliday = new Date(e.target.value);
+                            removeHoliday(holiday);
+                            addHoliday(updatedHoliday);
+                          }
+                        } />
+                      : holiday.toLocaleDateString()
+                  }
+                </td>
+                <td><button onClick={() => removeHoliday(holiday)}>削除</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <h3>セクション一覧</h3>
       <div>
         <button
@@ -409,7 +501,7 @@ export const Schedule = () => {
                               (e) => updateTask({
                                 ...task,
                                 scheduledEndDate: new Date(e.target.value),
-                                personDays: Math.ceil((new Date(e.target.value).getTime() - task.scheduledStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+                                personDays: calculatePersonDays(task.scheduledStartDate, new Date(e.target.value))
                               })
                             } />
                           : task.scheduledEndDate.toLocaleDateString()
@@ -426,7 +518,7 @@ export const Schedule = () => {
                         onChange={
                           (e) => updateTask({
                             ...task,
-                            scheduledEndDate: new Date(task.scheduledStartDate.getTime() + Number(e.target.value) * 24 * 60 * 60 * 1000 - 1),
+                            scheduledEndDate: calculateEndDate(task.scheduledStartDate, Number(e.target.value)),
                             personDays: Number(e.target.value)
                           })
                         } />

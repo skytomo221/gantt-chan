@@ -47,4 +47,6 @@ export type Schedule = {
   version: "1.0";
   sections: Section[];
   tasks: Task[];
+  holidays: Date[];
+  skipWeekends: boolean;
 };

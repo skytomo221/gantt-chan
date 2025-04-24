@@ -41,7 +41,19 @@ type Action =
         taskId: string;
         newIndex: number;
       };
-  };
+    }
+  | {
+      type: "ADD_HOLIDAY";
+      payload: Date;
+    }
+  | {
+      type: "REMOVE_HOLIDAY";
+      payload: Date;
+    }
+  | {
+      type: "SET_SKIP_WEEKENDS";
+      payload: boolean;
+    };
 
 const initialState: State = {
   editable: false,
@@ -90,6 +102,8 @@ const initialState: State = {
         progress: 0,
       },
     ],
+    holidays: [],
+    skipWeekends: true,
   },
 };
 
@@ -210,6 +224,35 @@ const reducer = (state: State, action: Action) => {
         schedule: {
           ...state.schedule,
           tasks: reorderedTasks,
+        },
+      };
+    }
+    case "ADD_HOLIDAY": {
+      return {
+        ...state,
+        schedule: {
+          ...state.schedule,
+          holidays: [...state.schedule.holidays, action.payload],
+        },
+      };
+    }
+    case "REMOVE_HOLIDAY": {
+      return {
+        ...state,
+        schedule: {
+          ...state.schedule,
+          holidays: state.schedule.holidays.filter(
+            (holiday) => holiday !== action.payload,
+          ),
+        },
+      };
+    }
+    case "SET_SKIP_WEEKENDS": {
+      return {
+        ...state,
+        schedule: {
+          ...state.schedule,
+          skipWeekends: action.payload,
         },
       };
     }
