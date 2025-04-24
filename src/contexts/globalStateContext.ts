@@ -113,7 +113,7 @@ const reducer = (state: State, action: Action) => {
     case "SET_SCHEDULE": {
       return {
         ...state,
-        ...action.payload,
+        schedule: action.payload,
       };
     }
     case "ADD_SECTION": {
