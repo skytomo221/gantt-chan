@@ -47,7 +47,7 @@ function drawChart(
   const ctx = initChartContext(svgRef.current, tasks)
 
   // 2. ズーム＆パン設定
-  setupZoomPan(d3.select(svgRef.current), ctx.g, ctx.xScale, ctx)
+  setupZoom(d3.select(svgRef.current), ctx.g, ctx.xScale, ctx)
 
   // 3. ヘッダー（月・日）描画
   drawMonths(ctx.g, ctx.monthData, ctx)
@@ -109,7 +109,7 @@ function initChartContext(svgEl: SVGSVGElement, tasks: Task[]) {
 }
 
 // 2. ズーム＆パン
-function setupZoomPan(
+function setupZoom(
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   xScale: d3.ScaleTime<number, number>,
@@ -136,28 +136,6 @@ function setupZoomPan(
     })
 
   svg.call(zoomBehavior).on("dblclick.zoom", null)
-
-  // 2. 既存の pan-rect があれば先に削除
-  g.selectAll(".pan-rect").remove()
-
-  // 3. カスタムパン用ドラッグ領域
-  let currentTranslateX = 0
-  g.insert("rect", ":first-child")
-    .attr("class", "pan-rect")
-    .attr("x", 0)
-    .attr("y", -margin.top)
-    .attr("width", chartWidth)
-    .attr("height", svgHeight)
-    .style("fill", "transparent")
-    .style("cursor", "grab")
-    .call(d3.drag<SVGRectElement, unknown>()
-      .on("start", () => g.style("cursor", "grabbing"))
-      .on("drag", (event) => {
-        currentTranslateX += event.dx
-        g.attr("transform", `translate(${margin.left + currentTranslateX},${margin.top})`)
-      })
-      .on("end", () => g.style("cursor", "grab"))
-    )
 }
 
 // 3-4. ヘッダー描画
