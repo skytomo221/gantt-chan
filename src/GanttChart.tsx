@@ -7,11 +7,31 @@ export const GanttChart: FC = () => {
   const svgRef = useRef<SVGSVGElement>(null)
   const { schedule, editable } = useGlobalStateStore();
 
+  const handleDownload = () => {
+    if (!svgRef.current) return;
+    const serializer = new XMLSerializer();
+    const source = serializer.serializeToString(svgRef.current);
+    const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'gantt-chart.svg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
     drawChart(svgRef, schedule, editable)
   }, [svgRef, schedule, editable])
 
-  return <svg ref={svgRef} width="100%" />
+  return (
+    <div>
+      <button onClick={handleDownload}>画像として保存</button>
+      <svg ref={svgRef} width="100%" />
+    </div>
+  )
 }
 
 function drawChart(
