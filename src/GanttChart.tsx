@@ -29,7 +29,9 @@ export const GanttChart: FC = () => {
   return (
     <div>
       <button onClick={handleDownload}>画像として保存</button>
-      <svg ref={svgRef} width="100%" />
+      <div style={{ overflowX: 'auto' }}>
+        <svg ref={svgRef} />
+      </div>
     </div>
   )
 }
@@ -45,10 +47,10 @@ function drawChart(
   const rowHeight = 30
   const dayMs = 24 * 60 * 60 * 1000
 
-  const svgWidth = svgRef.current.clientWidth
-  const svgHeight = margin.top + tasks.length * rowHeight + margin.bottom
-  const width = svgWidth - margin.left - margin.right
+  // 1日あたりの幅を固定(px)
+  const dayWidth = 40
 
+  // タスク群から日付の範囲を取得
   const dateList = [
     ...tasks
       .filter(t => t.status !== "milestone")
@@ -75,25 +77,34 @@ function drawChart(
   const minDate = d3.min(dateList, d => d)!
   const maxDate = d3.max(dateList, d => d)!
   const totalDays = (maxDate.getTime() - minDate.getTime()) / dayMs
-  const cellWidth = width / totalDays
 
-  d3.select(svgRef.current).selectAll("*").remove()
-  const svg = d3.select(svgRef.current).attr("height", svgHeight)
-  const g = svg
-    .append("g")
+  // チャートの幅を「日数×dayWidth」で計算
+  const chartWidth = totalDays * dayWidth
+  const svgWidth = chartWidth + margin.left + margin.right
+  const svgHeight = margin.top + tasks.length * rowHeight + margin.bottom
+
+  // 描画領域をクリアしてサイズを設定
+  const svg = d3.select(svgRef.current)
+    .attr("width", svgWidth)
+    .attr("height", svgHeight)
+  svg.selectAll("*").remove()
+
+  // スケールは chartWidth をレンジに
+  const xScale = d3.scaleTime()
+    .domain([minDate, maxDate])
+    .range([0, chartWidth])
+
+  const g = svg.append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`)
 
   // ── 横軸のみズーム設定 ──
   const zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.5, 3])
-    .translateExtent([[0, 0], [width, 0]])
-    .extent([[0, 0], [width, 0]])
+    .translateExtent([[0, 0], [chartWidth, 0]])
+    .extent([[0, 0], [chartWidth, 0]])
     .on("zoom", (event) => {
-      // event.transform から再スケールした xScale を取得
       const newX = event.transform.rescaleX(xScale)
-      // 月・日ヘッダーを再描画
-      drawMonths(newX)
-      drawDays(newX)
+      drawMonths(newX); drawDays(newX)
       // タスクバー位置も更新
       g.selectAll<SVGRectElement, Exclude<Task, Milestone>>(".task-bar")
         .attr("x", d => newX(d.scheduledStartDate))
@@ -101,14 +112,7 @@ function drawChart(
       // 進捗線も更新
       updateProgressLine(newX)
     })
-
-  svg.call(zoomBehavior)
-    .on("dblclick.zoom", null)  // ダブルクリックズームを無効化（任意）
-
-  const xScale = d3
-    .scaleTime()
-    .domain([minDate, maxDate])
-    .range([0, width])
+  svg.call(zoomBehavior).on("dblclick.zoom", null)
 
   // ── 再描画用ヘルパー ──
   // 月ヘッダーと日ヘッダーをそれぞれ再描画する関数を用意
@@ -186,7 +190,7 @@ function drawChart(
     .attr("class", "pan-rect")
     .attr("x", 0)
     .attr("y", -margin.top)
-    .attr("width", width)
+    .attr("width", chartWidth)
     .attr("height", svgHeight)
     .style("fill", "transparent")
     .style("cursor", "grab")
@@ -269,7 +273,7 @@ function drawChart(
           .call(d3.drag<SVGRectElement, any>()
             .on('drag', (event) => {
               const dx = event.x
-              const dayOffset = Math.round(dx / cellWidth)
+              const dayOffset = Math.round(dx / dayWidth)
               const newStart = new Date(task.scheduledStartDate.getTime() + dayOffset * dayMs)
               if (newStart < task.scheduledEndDate) {
                 task.scheduledStartDate = newStart
@@ -292,9 +296,9 @@ function drawChart(
           .call(d3.drag<SVGRectElement, any>()
             .on('drag', (event) => {
               const dx = event.x - x0
-              const dayCount = Math.max(1, Math.round(dx / cellWidth))
+              const dayCount = Math.max(1, Math.round(dx / dayWidth))
               task.scheduledEndDate = new Date(task.scheduledStartDate.getTime() + dayCount * dayMs)
-              bar.attr('width', cellWidth * dayCount)
+              bar.attr('width', dayWidth * dayCount)
               updateProgressLine(xScale)
             })
           )
