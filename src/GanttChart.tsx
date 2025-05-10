@@ -78,8 +78,8 @@ function initChartContext(svgEl: SVGSVGElement, tasks: Task[]) {
     ...tasks.filter(t => t.status === "active").map(t => t.actualStartDate),
     ...tasks.filter(t => t.status === "done").flatMap(t => [t.actualStartDate, t.actualEndDate!]),
   ]
-  const minDate = d3.min(dateList, d => d)!  
-  const maxDate = d3.max(dateList, d => d)!  
+  const minDate = d3.min(dateList, d => d)!
+  const maxDate = d3.max(dateList, d => d)!
   const totalDays = (maxDate.getTime() - minDate.getTime()) / dayMs
 
   // チャートの幅を「日数×dayWidth」で計算
@@ -213,94 +213,134 @@ function drawTasks(
   tooltip: d3.Selection<HTMLDivElement, unknown, HTMLElement, any>
 ) {
   const { xScale, rowHeight, dayWidth, dayMs } = ctx
-  tasks.filter(t => t.status !== "milestone").forEach((task, i) => {
+  tasks.forEach((task, i) => {
     const y = i * rowHeight
     const gTask = g.append('g').attr('transform', `translate(0,${y})`)
 
-    // ラベル
-    gTask.append('text')
-      .attr('x', -10)
-      .attr('y', rowHeight / 2 + 3)
-      .attr('text-anchor', 'end')
-      .attr('font-size', '12px')
-      .text(task.taskName)
+    if (task.status === 'milestone') {
+      // ── マイルストーン(ひし形)
+      const x = xScale(task.scheduledDate)
+      const size = rowHeight - 10
+      const half = size / 2
+      const cy = rowHeight / 2
 
-    const x0 = xScale(task.scheduledStartDate)
-    const w0 = xScale(task.scheduledEndDate) - x0
+      const diamond = gTask.append('polygon')
+        .datum(task)
+        .attr('class', 'milestone')
+        .attr('points', `
+          ${x},${cy - half}
+          ${x + half},${cy}
+          ${x},${cy + half}
+          ${x - half},${cy}
+        `.trim())
+        .attr('fill', 'orange')
+        .style('cursor', editable ? 'pointer' : 'default')
 
-    // メインバー
-    const bar = gTask.append('rect')
-      .datum(task)
-      .attr('x', x0)
-      .attr('y', 5)
-      .attr('width', w0)
-      .attr('height', rowHeight - 10)
-      .attr('fill', 'steelblue')
-      .style('cursor', editable ? 'pointer' : 'default')
-      .attr('class', 'task-bar')
+      diamond
+        .on('mouseover', (event: MouseEvent) => {
+          tooltip.html(
+            `<strong>◆ ${task.taskName}</strong><br>` +
+            `予定日: ${task.scheduledDate.toLocaleDateString()}`
+          )
+            .style('left', `${event.pageX + 10}px`)
+            .style('top', `${event.pageY + 10}px`)
+            .style('opacity', 1)
+        })
+        .on('mousemove', (event: MouseEvent) => {
+          tooltip
+            .style('left', `${event.pageX + 10}px`)
+            .style('top', `${event.pageY + 10}px`)
+        })
+        .on('mouseout', () => {
+          tooltip.style('opacity', 0)
+        })
 
-    // ツールチップ
-    bar.on('mouseover', (event: MouseEvent) => {
-      tooltip.html(
-        `<strong>${task.taskName}</strong><br>` +
-        `開始: ${task.scheduledStartDate.toLocaleDateString()}<br>` +
-        `終了: ${task.scheduledEndDate.toLocaleDateString()}<br>` +
-        `進捗: ${task.progress}%`
-      )
-        .style('left', (event.pageX + 10) + 'px')
-        .style('top', (event.pageY + 10) + 'px')
-        .style('opacity', 1)
-    })
-      .on('mousemove', (event: MouseEvent) => {
-        tooltip
+    } else {
+      // ── 通常タスク(長方形)
+      // ラベル
+      gTask.append('text')
+        .attr('x', -10)
+        .attr('y', rowHeight / 2 + 3)
+        .attr('text-anchor', 'end')
+        .attr('font-size', '12px')
+        .text(task.taskName)
+
+      const x0 = xScale(task.scheduledStartDate)
+      const w0 = xScale(task.scheduledEndDate) - x0
+
+      const bar = gTask.append('rect')
+        .datum(task)
+        .attr('class', 'task-bar')
+        .attr('x', x0)
+        .attr('y', 5)
+        .attr('width', w0)
+        .attr('height', rowHeight - 10)
+        .attr('fill', 'steelblue')
+        .style('cursor', editable ? 'pointer' : 'default')
+
+      // ツールチップ
+      bar.on('mouseover', (event: MouseEvent) => {
+        tooltip.html(
+          `<strong>${task.taskName}</strong><br>` +
+          `開始: ${task.scheduledStartDate.toLocaleDateString()}<br>` +
+          `終了: ${task.scheduledEndDate.toLocaleDateString()}<br>` +
+          `進捗: ${task.progress}%`
+        )
           .style('left', (event.pageX + 10) + 'px')
           .style('top', (event.pageY + 10) + 'px')
+          .style('opacity', 1)
       })
-      .on('mouseout', () => {
-        tooltip.style('opacity', 0)
-      })
+        .on('mousemove', (event: MouseEvent) => {
+          tooltip
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY + 10) + 'px')
+        })
+        .on('mouseout', () => {
+          tooltip.style('opacity', 0)
+        })
 
-    if (editable) {
-      // 開始リサイズ
-      gTask.append('rect')
-        .attr('x', x0 - 5)
-        .attr('y', 5)
-        .attr('width', 10)
-        .attr('height', rowHeight - 10)
-        .style('fill', 'transparent')
-        .style('cursor', 'ew-resize')
-        .call(d3.drag<SVGRectElement, any>()
-          .on('drag', (event) => {
-            const dx = event.x
-            const dayOffset = Math.round(dx / dayWidth)
-            const newStart = new Date(task.scheduledStartDate.getTime() + dayOffset * dayMs)
-            if (newStart < task.scheduledEndDate) {
-              task.scheduledStartDate = newStart
-              const x1 = xScale(newStart)
-              const w1 = xScale(task.scheduledEndDate) - x1
-              bar.attr('x', x1).attr('width', w1)
-              updateProgressLine(ctx.g, tasks, xScale, ctx.rowHeight)
-            }
-          })
-        )
+      if (editable) {
+        // 開始リサイズ
+        gTask.append('rect')
+          .attr('x', x0 - 5)
+          .attr('y', 5)
+          .attr('width', 10)
+          .attr('height', rowHeight - 10)
+          .style('fill', 'transparent')
+          .style('cursor', 'ew-resize')
+          .call(d3.drag<SVGRectElement, any>()
+            .on('drag', (event) => {
+              const dx = event.x
+              const dayOffset = Math.round(dx / dayWidth)
+              const newStart = new Date(task.scheduledStartDate.getTime() + dayOffset * dayMs)
+              if (newStart < task.scheduledEndDate) {
+                task.scheduledStartDate = newStart
+                const x1 = xScale(newStart)
+                const w1 = xScale(task.scheduledEndDate) - x1
+                bar.attr('x', x1).attr('width', w1)
+                updateProgressLine(ctx.g, tasks, xScale, rowHeight)
+              }
+            })
+          )
 
-      // 終了リサイズ
-      gTask.append('rect')
-        .attr('x', x0 + w0 - 5)
-        .attr('y', 5)
-        .attr('width', 10)
-        .attr('height', rowHeight - 10)
-        .style('fill', 'transparent')
-        .style('cursor', 'ew-resize')
-        .call(d3.drag<SVGRectElement, any>()
-          .on('drag', (event) => {
-            const dx = event.x - x0
-            const dayCount = Math.max(1, Math.round(dx / dayWidth))
-            task.scheduledEndDate = new Date(task.scheduledStartDate.getTime() + dayCount * dayMs)
-            bar.attr('width', dayWidth * dayCount)
-            updateProgressLine(ctx.g, tasks, xScale, ctx.rowHeight)
-          })
-        )
+        // 終了リサイズ
+        gTask.append('rect')
+          .attr('x', x0 + w0 - 5)
+          .attr('y', 5)
+          .attr('width', 10)
+          .attr('height', rowHeight - 10)
+          .style('fill', 'transparent')
+          .style('cursor', 'ew-resize')
+          .call(d3.drag<SVGRectElement, any>()
+            .on('drag', (event) => {
+              const dx = event.x - x0
+              const dayCount = Math.max(1, Math.round(dx / dayWidth))
+              task.scheduledEndDate = new Date(task.scheduledStartDate.getTime() + dayCount * dayMs)
+              bar.attr('width', dayWidth * dayCount)
+              updateProgressLine(ctx.g, tasks, xScale, rowHeight)
+            })
+          )
+      }
     }
   })
 }
