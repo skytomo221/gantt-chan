@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useRef } from 'react'
+import React, { FC, useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
 import { Milestone, Schedule, Task, TaskStatus } from "./types";
 import { useGlobalStateStore } from './contexts/globalStateContext';
@@ -6,10 +6,25 @@ import { useGlobalStateStore } from './contexts/globalStateContext';
 export const GanttChart: FC = () => {
   const svgRef = useRef<SVGSVGElement>(null)
   const { schedule, editable } = useGlobalStateStore();
+  // dayWidth を state で管理
+  const [dayWidth, setDayWidth] = useState(40);
+
+  // wheel で dayWidth を増減
+  useEffect(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      // スクロール量に応じて増減、最小値 10px、最大値 100px などに制限
+      setDayWidth(w => Math.max(10, Math.min(100, w - e.deltaY * 0.1)));
+    };
+    svgEl.addEventListener('wheel', handler, { passive: false });
+    return () => void svgEl.removeEventListener('wheel', handler);
+  }, []);
 
   useEffect(() => {
-    drawChart(svgRef, schedule.tasks, editable)
-  }, [svgRef, schedule, editable])
+    drawChart(svgRef, schedule.tasks, editable, dayWidth)
+  }, [svgRef, schedule, editable, dayWidth])
 
   const handleDownload = () => {
     if (!svgRef.current) return;
@@ -39,17 +54,18 @@ export const GanttChart: FC = () => {
 function drawChart(
   svgRef: React.RefObject<SVGSVGElement | null>,
   tasks: Task[],
-  editable: boolean
+  editable: boolean,
+  dayWidth: number     // ← dayWidth を渡す
 ) {
   if (!svgRef.current) return;
 
   // 1. コンテキストの初期化（サイズ計算・SVGクリア・スケール作成）
-  const ctx = initChartContext(svgRef.current, tasks)
+  const ctx = initChartContext(svgRef.current, tasks, dayWidth)
 
   // 2. ズーム＆パン設定
   setupZoom(d3.select(svgRef.current), ctx.g, ctx.xScale, ctx)
 
-  // 3. ヘッダー（月・日）描画
+  // 3. ヘッダー/月・日描画
   drawMonths(ctx.g, ctx.monthData, ctx)
   drawDays(ctx.g, ctx.dayData, ctx)
 
@@ -63,37 +79,47 @@ function drawChart(
   updateProgressLine(ctx.g, tasks, ctx.xScale, ctx.rowHeight)
 }
 
-// --- ヘルパー関数群 ---
-
 // 1. コンテキスト初期化
-function initChartContext(svgEl: SVGSVGElement, tasks: Task[]) {
+function initChartContext(
+  svgEl: SVGSVGElement,
+  tasks: Task[],
+  dayWidth: number    // ← dayWidth を受け取る
+) {
   const margin = { top: 60, right: 20, bottom: 20, left: 50 }
   const rowHeight = 30
   const dayMs = 24 * 60 * 60 * 1000
-  const dayWidth = 40
 
-  const dateList = [
-    ...tasks.filter(t => t.status !== "milestone").flatMap(t => [t.scheduledStartDate, t.scheduledEndDate]),
-    ...tasks.filter(t => t.status === "milestone").flatMap(t => [t.scheduledDate, t.actualDate!]),
-    ...tasks.filter(t => t.status === "active").map(t => t.actualStartDate),
-    ...tasks.filter(t => t.status === "done").flatMap(t => [t.actualStartDate, t.actualEndDate!]),
-  ]
-  const minDate = d3.min(dateList, d => d)!
-  const maxDate = d3.max(dateList, d => d)!
-  const totalDays = (maxDate.getTime() - minDate.getTime()) / dayMs
+  // 日幅は渡された dayWidth を使う
+  const totalDays = (d3.max(tasks.map(t =>
+    t.status === 'milestone'
+      ? Math.max(t.scheduledDate.getTime(), (t.actualDate||t.scheduledDate).getTime())
+      : t.scheduledEndDate.getTime()
+  ))! - d3.min(tasks.map(t =>
+    t.status === 'milestone'
+      ? t.scheduledDate.getTime()
+      : t.scheduledStartDate.getTime()
+  ))!) / dayMs
 
-  // チャートの幅を「日数×dayWidth」で計算
   const chartWidth = totalDays * dayWidth
   const svgWidth = chartWidth + margin.left + margin.right
   const svgHeight = margin.top + tasks.length * rowHeight + margin.bottom
 
-  // 描画領域をクリアしてサイズを設定
   const svg = d3.select(svgEl)
     .attr("width", svgWidth)
     .attr("height", svgHeight)
   svg.selectAll("*").remove()
 
-  // スケールは chartWidth をレンジに
+  const minDate = d3.min(tasks.map(t =>
+    t.status === 'milestone'
+      ? t.scheduledDate
+      : t.scheduledStartDate
+  ))!
+  const maxDate = d3.max(tasks.map(t =>
+    t.status === 'milestone'
+      ? (t.actualDate || t.scheduledDate)
+      : t.scheduledEndDate
+  ))!
+
   const xScale = d3.scaleTime()
     .domain([minDate, maxDate])
     .range([0, chartWidth])
@@ -104,7 +130,6 @@ function initChartContext(svgEl: SVGSVGElement, tasks: Task[]) {
   const monthData = d3.timeMonths(d3.timeMonth.floor(minDate), d3.timeMonth.offset(maxDate, 1))
   const dayData = d3.timeDays(d3.timeDay.floor(minDate), d3.timeDay.offset(maxDate, 1))
 
-  // ★ chartWidth, svgHeight を返却オブジェクトに追加
   return { svg, g, margin, rowHeight, dayMs, dayWidth, xScale, monthData, dayData, tasks, chartWidth, svgHeight }
 }
 
