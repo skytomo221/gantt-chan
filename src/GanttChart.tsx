@@ -83,6 +83,24 @@ function drawChart(
   updateProgressLine(ctx.g, tasks, ctx.xScale, ctx.rowHeight)
 }
 
+// 1. 描画コンテキストの型
+interface ChartContext {
+  svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+  g: d3.Selection<SVGGElement, unknown, null, undefined>;
+  margin: { top: number; right: number; bottom: number; left: number };
+  rowHeight: number;
+  dayMs: number;
+  dayWidth: number;
+  xScale: d3.ScaleTime<number, number>;
+  monthData: Date[];
+  dayData: Date[];
+  tasks: Task[];
+  chartWidth: number;
+  svgHeight: number;
+  holidays: Date[];
+  skipWeekends: boolean;
+}
+
 // 1. コンテキスト初期化
 function initChartContext(
   svgEl: SVGSVGElement,
@@ -90,7 +108,7 @@ function initChartContext(
   dayWidth: number,    // ← dayWidth を受け取る
   holidays: Date[],
   skipWeekends: boolean
-) {
+): ChartContext {
   const margin = { top: 60, right: 20, bottom: 20, left: 50 }
   const rowHeight = 30
   const dayMs = 24 * 60 * 60 * 1000
@@ -144,7 +162,7 @@ function setupZoom(
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   xScale: d3.ScaleTime<number, number>,
-  ctx: ReturnType<typeof initChartContext>
+  ctx: ChartContext
 ) {
   const { chartWidth, svgHeight, margin, tasks, rowHeight } = ctx
 
@@ -415,28 +433,36 @@ function updateProgressLine(
     .attr("stroke-width", 2)
 }
 
-function shadeNonWorkingDays(g: any, data: Date[], ctx: any) {
-  const { xScale: scale, rowHeight, tasks, holidays, skipWeekends } = ctx
+function shadeNonWorkingDays(
+  g: d3.Selection<SVGGElement, unknown, null, undefined>,
+  data: Date[],
+  ctx: ChartContext
+): void {
+  const { xScale: scale, rowHeight, tasks, holidays, skipWeekends } = ctx;
 
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
-    a.getMonth()    === b.getMonth() &&
-    a.getDate()     === b.getDate()
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
 
   // 休日または週末に該当する日だけフィルタ
-  const daysToShade = data.filter(d => {
-    if (skipWeekends && (d.getDay() === 0 || d.getDay() === 6)) return true
-    return holidays.some((h: Date) => isSameDay(h, d))
-  })
+  const daysToShade = data.filter(d =>
+    (skipWeekends && (d.getDay() === 0 || d.getDay() === 6)) ||
+    holidays.some(h => isSameDay(h, d))
+  );
 
-  const fullHeight = tasks.length * rowHeight
-  const sel = g.selectAll(".holiday-rect").data(daysToShade)
-  sel.exit().remove()
-  sel.enter().append("rect").attr("class", "holiday-rect")
+  const fullHeight = tasks.length * rowHeight;
+  const sel = g.selectAll<SVGRectElement, Date>(".holiday-rect")
+               .data(daysToShade);
+
+  sel.exit().remove();
+  sel.enter()
+    .append("rect")
+      .attr("class", "holiday-rect")
     .merge(sel)
-    .attr("x", (d: Date) => scale(d))
-    .attr("y", 0)
-    .attr("width", (d: Date) => scale(d3.timeDay.offset(d, 1)) - scale(d))
-    .attr("height", fullHeight)
-    .attr("fill", "#eee")
+      .attr("x", d => scale(d))
+      .attr("y", 0)
+      .attr("width", d => scale(d3.timeDay.offset(d, 1)) - scale(d))
+      .attr("height", fullHeight)
+      .attr("fill", "#eee");
 }
