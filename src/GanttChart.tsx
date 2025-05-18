@@ -6,6 +6,7 @@ import { useGlobalStateStore } from './contexts/globalStateContext';
 export const GanttChart: FC = () => {
   const svgRef = useRef<SVGSVGElement>(null)
   const { schedule, editable } = useGlobalStateStore();
+  const { tasks, holidays, skipWeekends } = schedule;
   // dayWidth を state で管理
   const [dayWidth, setDayWidth] = useState(40);
 
@@ -23,7 +24,7 @@ export const GanttChart: FC = () => {
   }, []);
 
   useEffect(() => {
-    drawChart(svgRef, schedule.tasks, editable, dayWidth)
+    drawChart(svgRef, tasks, editable, dayWidth, holidays, skipWeekends)
   }, [svgRef, schedule, editable, dayWidth])
 
   const handleDownload = () => {
@@ -55,12 +56,14 @@ function drawChart(
   svgRef: React.RefObject<SVGSVGElement | null>,
   tasks: Task[],
   editable: boolean,
-  dayWidth: number     // ← dayWidth を渡す
+  dayWidth: number,
+  holidays: Date[],
+  skipWeekends: boolean
 ) {
   if (!svgRef.current) return;
 
   // 1. コンテキストの初期化（サイズ計算・SVGクリア・スケール作成）
-  const ctx = initChartContext(svgRef.current, tasks, dayWidth)
+  const ctx = initChartContext(svgRef.current, tasks, dayWidth, holidays, skipWeekends)
 
   // 2. ズーム＆パン設定
   setupZoom(d3.select(svgRef.current), ctx.g, ctx.xScale, ctx)
@@ -68,6 +71,7 @@ function drawChart(
   // 3. ヘッダー/月・日描画
   drawMonths(ctx.g, ctx.monthData, ctx)
   drawDays(ctx.g, ctx.dayData, ctx)
+  shadeNonWorkingDays(ctx.g, ctx.dayData, ctx)
 
   // 4. ツールチップ準備
   const tooltip = setupTooltip()
@@ -83,7 +87,9 @@ function drawChart(
 function initChartContext(
   svgEl: SVGSVGElement,
   tasks: Task[],
-  dayWidth: number    // ← dayWidth を受け取る
+  dayWidth: number,    // ← dayWidth を受け取る
+  holidays: Date[],
+  skipWeekends: boolean
 ) {
   const margin = { top: 60, right: 20, bottom: 20, left: 50 }
   const rowHeight = 30
@@ -130,7 +136,7 @@ function initChartContext(
   const monthData = d3.timeMonths(d3.timeMonth.floor(minDate), d3.timeMonth.offset(maxDate, 1))
   const dayData = d3.timeDays(d3.timeDay.floor(minDate), d3.timeDay.offset(maxDate, 1))
 
-  return { svg, g, margin, rowHeight, dayMs, dayWidth, xScale, monthData, dayData, tasks, chartWidth, svgHeight }
+  return { svg, g, margin, rowHeight, dayMs, dayWidth, xScale, monthData, dayData, tasks, chartWidth, svgHeight, holidays, skipWeekends }
 }
 
 // 2. ズーム＆パン
@@ -407,4 +413,30 @@ function updateProgressLine(
     .attr("fill", "none")
     .attr("stroke", "orange")
     .attr("stroke-width", 2)
+}
+
+function shadeNonWorkingDays(g: any, data: Date[], ctx: any) {
+  const { xScale: scale, rowHeight, tasks, holidays, skipWeekends } = ctx
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth()    === b.getMonth() &&
+    a.getDate()     === b.getDate()
+
+  // 休日または週末に該当する日だけフィルタ
+  const daysToShade = data.filter(d => {
+    if (skipWeekends && (d.getDay() === 0 || d.getDay() === 6)) return true
+    return holidays.some((h: Date) => isSameDay(h, d))
+  })
+
+  const fullHeight = tasks.length * rowHeight
+  const sel = g.selectAll(".holiday-rect").data(daysToShade)
+  sel.exit().remove()
+  sel.enter().append("rect").attr("class", "holiday-rect")
+    .merge(sel)
+    .attr("x", (d: Date) => scale(d))
+    .attr("y", 0)
+    .attr("width", (d: Date) => scale(d3.timeDay.offset(d, 1)) - scale(d))
+    .attr("height", fullHeight)
+    .attr("fill", "#eee")
 }
