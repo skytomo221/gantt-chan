@@ -180,7 +180,8 @@ function setupZoom(
       g.selectAll<SVGRectElement, any>(".task-bar")
         .filter((d): d is Exclude<Task, Milestone> => d.status !== "milestone")
         .attr("x", d => newX(d.scheduledStartDate))
-        .attr("width", d => newX(d.scheduledEndDate) - newX(d.scheduledStartDate))
+        // 終了日は翌日 00:00 までを描画
+        .attr("width", d => newX(d3.timeDay.offset(d.scheduledEndDate, 1)) - newX(d.scheduledStartDate))
       updateProgressLine(g, tasks, newX, rowHeight)
     })
 
@@ -268,7 +269,10 @@ function drawTasks(
 
     if (task.status === 'milestone') {
       // ── マイルストーン(ひし形)
-      const x = xScale(task.scheduledDate)
+      // マイルストーンは正午に表示
+      const mid = new Date(task.scheduledDate.getTime())
+      mid.setHours(12, 0, 0, 0)
+      const x = xScale(mid)
       const size = rowHeight - 10
       const half = size / 2
       const cy = rowHeight / 2
@@ -315,7 +319,8 @@ function drawTasks(
         .text(task.taskName)
 
       const x0 = xScale(task.scheduledStartDate)
-      const w0 = xScale(task.scheduledEndDate) - x0
+      // 終了日は翌日 00:00 までを描画
+      const w0 = xScale(d3.timeDay.offset(task.scheduledEndDate, 1)) - x0
 
       const bar = gTask.append('rect')
         .datum(task)
@@ -414,9 +419,10 @@ function updateProgressLine(
         progX = scale(t.actualStartDate)
         break
       case "milestone":
-        progX = t.scheduledDate <= new Date()
-          ? scale(t.scheduledDate)
-          : scale(new Date())
+        // 進捗線上のマイルストーン点も正午に合わせる
+        const mid = new Date(t.scheduledDate.getTime())
+        mid.setHours(12, 0, 0, 0)
+        progX = scale(mid)
         break
       case "done":
       default:
