@@ -55,7 +55,7 @@ type Action =
       payload: boolean;
     };
 
-const today = new Date();
+const today = new Date(new Date().setHours(0, 0, 0, 0));
 const addDays = (date: Date, days: number): Date =>
   new Date(date.getTime() + days * 86400000);
 
