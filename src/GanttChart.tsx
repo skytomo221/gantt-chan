@@ -352,49 +352,6 @@ function drawTasks(
         .on('mouseout', () => {
           tooltip.style('opacity', 0)
         })
-
-      if (editable) {
-        // 開始リサイズ
-        gTask.append('rect')
-          .attr('x', x0 - 5)
-          .attr('y', 5)
-          .attr('width', 10)
-          .attr('height', rowHeight - 10)
-          .style('fill', 'transparent')
-          .style('cursor', 'ew-resize')
-          .call(d3.drag<SVGRectElement, any>()
-            .on('drag', (event) => {
-              const dx = event.x
-              const dayOffset = Math.round(dx / dayWidth)
-              const newStart = new Date(task.scheduledStartDate.getTime() + dayOffset * dayMs)
-              if (newStart < task.scheduledEndDate) {
-                task.scheduledStartDate = newStart
-                const x1 = xScale(newStart)
-                const w1 = xScale(task.scheduledEndDate) - x1
-                bar.attr('x', x1).attr('width', w1)
-                updateProgressLine(ctx.g, tasks, xScale, rowHeight)
-              }
-            })
-          )
-
-        // 終了リサイズ
-        gTask.append('rect')
-          .attr('x', x0 + w0 - 5)
-          .attr('y', 5)
-          .attr('width', 10)
-          .attr('height', rowHeight - 10)
-          .style('fill', 'transparent')
-          .style('cursor', 'ew-resize')
-          .call(d3.drag<SVGRectElement, any>()
-            .on('drag', (event) => {
-              const dx = event.x - x0
-              const dayCount = Math.max(1, Math.round(dx / dayWidth))
-              task.scheduledEndDate = new Date(task.scheduledStartDate.getTime() + dayCount * dayMs)
-              bar.attr('width', dayWidth * dayCount)
-              updateProgressLine(ctx.g, tasks, xScale, rowHeight)
-            })
-          )
-      }
     }
   })
 }
