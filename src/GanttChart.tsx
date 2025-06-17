@@ -372,15 +372,15 @@ function updateProgressLine(
           ? scale(t.scheduledStartDate)
           : scale(new Date())
         break
-      case "active":
-        progX = scale(t.actualStartDate)
-        break
+      case "active": {
+        const duration = t.scheduledEndDate.getTime() - t.scheduledStartDate.getTime();
+        // 進捗率を 0～1 に変換して開始日からの進捗時間を計算
+        const progressTime = duration * (t.progress / 100);
+        const progressDate = new Date(t.scheduledStartDate.getTime() + progressTime);
+        progX = scale(progressDate);
+        break;
+      }
       case "milestone":
-        // 進捗線上のマイルストーン点も正午に合わせる
-        const mid = new Date(t.scheduledDate.getTime())
-        mid.setHours(12, 0, 0, 0)
-        progX = scale(mid)
-        break
       case "done":
       default:
         progX = scale(new Date())
